@@ -54,29 +54,7 @@ jobs:
               labels.push('refactor');
             }
 
-            // Get changed files for better categorization
-            const { data: files } = await github.rest.pulls.listFiles({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.payload.pull_request.number,
-            });
-
-            const changedFiles = files.map(f => f.filename);
-            
-            // Backend changes
-            if (changedFiles.some(f => f.endsWith('.py'))) {
-              labels.push('backend');
-            }
-            
-            // Frontend changes
-            if (changedFiles.some(f => f.endsWith('.js') || f.endsWith('.vue') || f.endsWith('.html') || f.endsWith('.css'))) {
-              labels.push('frontend');
-            }
-            
-            // DocType changes
-            if (changedFiles.some(f => f.includes('doctype') && f.endsWith('.json'))) {
-              labels.push('doctype');
-            }
+                    
 
             // Add branch-specific labels
             if (targetBranch === 'main' || targetBranch === 'master') {
@@ -86,18 +64,70 @@ jobs:
               labels.push('uat-release');
               console.log('🧪 UAT release PR');
             } else if (targetBranch === 'develop' || targetBranch === 'development') {
-              labels.push('develop');
+              labels.push('development');
               console.log('🛠️ Development PR');
             }
 
-            // Add labels
+            // Add labels with error handling
             if (labels.length > 0) {
-              await github.rest.issues.addLabels({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.payload.pull_request.number,
-                labels: labels
-              });
-              
-              console.log(`Added labels: ${labels.join(', ')}`);
+              try {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.payload.pull_request.number,
+                  labels: labels
+                });
+                
+                console.log(`✅ Added labels: ${labels.join(', ')}`);
+              } catch (error) {
+                if (error.status === 422) {
+                  // Handle missing labels by creating them first
+                  console.log('Some labels don\'t exist, creating them...');
+                  
+                  const labelConfigs = {
+                    'skip-release-notes': { color: '6c757d', description: 'Skip in release notes' },
+                    'development': { color: '17a2b8', description: 'Development branch PR' },
+                    'uat-release': { color: 'fd7e14', description: 'UAT release PR' },
+                    'release': { color: 'e83e8c', description: 'Production release PR' },
+                    'uat-release' :{ color: 'fd7e14', description: 'UAT release PR' },
+                    'feature': { color: '0e8a16', description: 'New feature' },
+                    'bug': { color: 'd73a4a', description: 'Bug fix' },
+                    'docs': { color: '0052cc', description: 'Documentation' },
+                    'refactor': { color: 'fbca04', description: 'Code refactoring' },
+                  };
+                  
+                  // Create missing labels
+                  for (const label of labels) {
+                    if (labelConfigs[label]) {
+                      try {
+                        await github.rest.issues.createLabel({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          name: label,
+                          color: labelConfigs[label].color,
+                          description: labelConfigs[label].description
+                        });
+                        console.log(`🆕 Created label: ${label}`);
+                      } catch (createError) {
+                        console.log(`⚠️ Could not create label ${label}: ${createError.message}`);
+                      }
+                    }
+                  }
+                  
+                  // Try adding labels again
+                  try {
+                    await github.rest.issues.addLabels({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: context.payload.pull_request.number,
+                      labels: labels
+                    });
+                    console.log(`✅ Added labels after creation: ${labels.join(', ')}`);
+                  } catch (retryError) {
+                    console.log(`⚠️ Still couldn't add labels: ${retryError.message}`);
+                  }
+                } else {
+                  console.log(`⚠️ Error adding labels: ${error.message}`);
+                }
+              }
             }
