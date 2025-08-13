@@ -33,7 +33,7 @@ jobs:
                           
               { name: 'skip-release-notes', color: '6c757d', description: 'Skip in release notes' },
               // Branch-specific labels
-              { name: 'develop', color: '17a2b8', description: 'Development branch PR' },
+              { name: 'development', color: '17a2b8', description: 'Development branch PR' },
               { name: 'uat-release', color: 'fd7e14', description: 'UAT release PR' },
               { name: 'release', color: 'e83e8c', description: 'Production release PR' }
             ];
