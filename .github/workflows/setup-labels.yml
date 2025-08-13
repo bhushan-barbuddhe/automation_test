@@ -5,6 +5,8 @@ name: "Setup Repository Labels"
 
 on:
   workflow_dispatch: # Manual trigger
+  schedule:
+    - cron: '0 0 1 * *' # Monthly check (optional)
 
 permissions:
   issues: write
@@ -28,11 +30,7 @@ jobs:
               { name: 'backend', color: '1d76db', description: 'Backend/Python changes' },
               { name: 'frontend', color: 'f1c232', description: 'Frontend changes' },
               { name: 'doctype', color: '7057ff', description: 'DocType changes' },
-              
-              { name: 'small', color: '28a745', description: 'Small changes' },
-              { name: 'medium', color: 'ffc107', description: 'Medium changes' },
-              { name: 'large', color: 'dc3545', description: 'Large changes' },
-              
+                          
               { name: 'skip-release-notes', color: '6c757d', description: 'Skip in release notes' }
             ];
 
