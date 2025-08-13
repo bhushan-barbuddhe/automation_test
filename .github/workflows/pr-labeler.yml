@@ -40,7 +40,7 @@ jobs:
             );
             
             if (hasSkipPrefix) {
-              labels.push('skip-release');
+              labels.push('skip-release-notes');
             }
 
             // Type detection from title
@@ -54,40 +54,6 @@ jobs:
               labels.push('refactor');
             }
 
-            // Size based on changes
-            const totalChanges = (pr.additions || 0) + (pr.deletions || 0);
-            if (totalChanges < 50) {
-              labels.push('small');
-            } else if (totalChanges < 200) {
-              labels.push('medium');
-            } else {
-              labels.push('large');
-            }
-
-            // Get changed files for better categorization
-            const { data: files } = await github.rest.pulls.listFiles({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.payload.pull_request.number,
-            });
-
-            const changedFiles = files.map(f => f.filename);
-            
-            // Backend changes
-            if (changedFiles.some(f => f.endsWith('.py'))) {
-              labels.push('backend');
-            }
-            
-            // Frontend changes
-            if (changedFiles.some(f => f.endsWith('.js') || f.endsWith('.vue') || f.endsWith('.html') || f.endsWith('.css'))) {
-              labels.push('frontend');
-            }
-            
-            // DocType changes
-            if (changedFiles.some(f => f.includes('doctype') && f.endsWith('.json'))) {
-              labels.push('doctype');
-            }
-
             // Add branch-specific labels
             if (targetBranch === 'main' || targetBranch === 'master') {
               labels.push('release');
@@ -96,40 +62,69 @@ jobs:
               labels.push('uat-release');
               console.log('🧪 UAT release PR');
             } else if (targetBranch === 'develop' || targetBranch === 'development') {
-              labels.push('develop');
+              labels.push('development');
               console.log('🛠️ Development PR');
             }
 
-            // Get existing labels to avoid permission errors
-            const { data: existingLabels } = await github.rest.issues.listLabelsForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-            });
-            
-            const existingLabelNames = existingLabels.map(label => label.name.toLowerCase());
-            
-            // Only add labels that already exist in the repo
-            const validLabels = labels.filter(label => existingLabelNames.includes(label.toLowerCase()));
-            
             // Add labels with error handling
-            if (validLabels.length > 0) {
+            if (labels.length > 0) {
               try {
                 await github.rest.issues.addLabels({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
                   issue_number: context.payload.pull_request.number,
-                  labels: validLabels
+                  labels: labels
                 });
                 
-                console.log(`✅ Added labels: ${validLabels.join(', ')}`);
+                console.log(`✅ Added labels: ${labels.join(', ')}`);
               } catch (error) {
-                console.log(`⚠️ Error adding labels: ${error.message}`);
+                if (error.status === 422) {
+                  // Handle missing labels by creating them first
+                  console.log('Some labels don\'t exist, creating them...');
+                  
+                  const labelConfigs = {
+                    'skip-release-notes': { color: '6c757d', description: 'Skip in release notes' },
+                    'develop': { color: '17a2b8', description: 'Development branch PR' },
+                    'uat-release': { color: 'fd7e14', description: 'UAT release PR' },
+                    'release': { color: 'e83e8c', description: 'Production release PR' },
+                    'feature': { color: '0e8a16', description: 'New feature' },
+                    'bug': { color: 'd73a4a', description: 'Bug fix' },
+                    'docs': { color: '0052cc', description: 'Documentation' },
+                    'refactor': { color: 'fbca04', description: 'Code refactoring' }
+                  };
+                  
+                  // Create missing labels
+                  for (const label of labels) {
+                    if (labelConfigs[label]) {
+                      try {
+                        await github.rest.issues.createLabel({
+                          owner: context.repo.owner,
+                          repo: context.repo.repo,
+                          name: label,
+                          color: labelConfigs[label].color,
+                          description: labelConfigs[label].description
+                        });
+                        console.log(`🆕 Created label: ${label}`);
+                      } catch (createError) {
+                        console.log(`⚠️ Could not create label ${label}: ${createError.message}`);
+                      }
+                    }
+                  }
+                  
+                  // Try adding labels again
+                  try {
+                    await github.rest.issues.addLabels({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: context.payload.pull_request.number,
+                      labels: labels
+                    });
+                    console.log(`✅ Added labels after creation: ${labels.join(', ')}`);
+                  } catch (retryError) {
+                    console.log(`⚠️ Still couldn't add labels: ${retryError.message}`);
+                  }
+                } else {
+                  console.log(`⚠️ Error adding labels: ${error.message}`);
+                }
               }
-            }
-            
-            // Log missing labels for manual creation
-            const missingLabels = labels.filter(label => !existingLabelNames.includes(label.toLowerCase()));
-            if (missingLabels.length > 0) {
-              console.log(`📝 Missing labels (create manually): ${missingLabels.join(', ')}`);
-              console.log('Go to Issues → Labels → New label to create them');
             }
